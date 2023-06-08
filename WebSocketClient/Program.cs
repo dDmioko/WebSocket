@@ -1,25 +1,47 @@
-﻿using WebSocketClient.WebSocket;
+﻿using System.Net.WebSockets;
+using System.Text;
+using var client = new ClientWebSocket();
 
-const string serverUrl = "ws://185.246.65.199:9090/ws";
-OdometerController controller = new(serverUrl);
+var serverUri = new Uri("ws://185.246.65.199:9090/ws");
+await client.ConnectAsync(serverUri, CancellationToken.None);
 
-await controller.ConnectAsync();
+// Отправка запроса на сервер для получения текущего значения одометра
+var odometerRequest = "{\"operation\": \"getCurrentOdometer\"}";
+await SendAsync(client, odometerRequest);
 
+// Получение ответа от сервера
+var odometerResponse = await ReceiveAsync(client);
+Console.WriteLine(odometerResponse);
 
-// Example: Sending an odometer value
-float odometerValue = 123.45f;
-controller.SendOdometerValue(odometerValue);
+// Отправка запроса на сервер для получения случайного значения правда/ложь
+var randomStatusRequest = "{\"operation\": \"getRandomStatus\"}";
+await SendAsync(client, randomStatusRequest);
 
-// Example: Requesting current odometer value
-float currentOdometer = await controller.GetCurrentOdometerAsync();
-Console.WriteLine("Current Odometer: " + currentOdometer);
+// Получение ответа от сервера
+var randomStatusResponse = await ReceiveAsync(client);
+Console.WriteLine(randomStatusResponse);
 
-// Example: Requesting random status
-(bool randomStatus, float randomOdometer) = await controller.GetRandomStatusAsync();
-Console.WriteLine("Random Status: " + randomStatus);
-Console.WriteLine("Random Odometer: " + randomOdometer);
+// Отправка запроса на сервер для передачи значения одометра
+var odometerValueRequest = "{\"operation\": \"odometer_val\", \"value\": 123.45}";
+await SendAsync(client, odometerValueRequest);
 
-// Wait for user input before closing the connection
-Console.ReadLine();
+static async Task SendAsync(WebSocket client, string message)
+{
+    var buffer = new ArraySegment<byte>(Encoding.UTF8.GetBytes(message));
+    await client.SendAsync(buffer, WebSocketMessageType.Text, true, CancellationToken.None);
+}
 
-controller.Close();
+static async Task<string> ReceiveAsync(WebSocket client)
+{
+    var buffer = new ArraySegment<byte>(new byte[8192]);
+    var result = new StringBuilder();
+    WebSocketReceiveResult receiveResult;
+
+    do
+    {
+        receiveResult = await client.ReceiveAsync(buffer, CancellationToken.None);
+        if (buffer.Array != null) result.Append(Encoding.UTF8.GetString(buffer.Array, buffer.Offset, receiveResult.Count));
+    } while (!receiveResult.EndOfMessage);
+
+    return result.ToString();
+}
